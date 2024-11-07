@@ -1,0 +1,600 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: AWS CloudFormation template to set up a single API Gateway for accessing Sales dataset.
+
+Resources:
+  SalesDataS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-sales-data-${AWS::AccountId}"
+
+  SchemaInstructionS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-agent-instructions-${AWS::AccountId}"
+
+  SalesDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: sales
+        Description: Database for Sales dataset
+
+  DownloadSalesDataLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3DataBucketAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:ListBucket
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${SalesDataS3Bucket}/sales-data/*"
+
+  DownloadSalesDataLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt DownloadSalesDataLambdaExecutionRole.Arn
+      EphemeralStorage:
+        Size: 2048
+      Code:
+        ZipFile: |
+          import boto3
+          import urllib.request
+          import urllib.error
+          import os
+          import cfnresponse
+          import zipfile
+          import csv
+          import io
+
+          def lambda_handler(event, context):
+              try:
+                  if event['RequestType'] == 'Create':
+                      s3 = boto3.client('s3')
+                      bucket = os.environ['SalesDataS3Bucket']
+                      prefix = "sales-data/"
+
+                      # Download the zip file with headers
+                      url = "https://excelbianalytics.com/wp/wp-content/uploads/2017/07/1000-Sales-Records.zip"
+                      headers = {
+                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                          'Accept-Language': 'en-US,en;q=0.5',
+                          'Connection': 'keep-alive',
+                          'Upgrade-Insecure-Requests': '1'
+                      }
+                      
+                      try:
+                          req = urllib.request.Request(url, headers=headers)
+                          with urllib.request.urlopen(req) as response:
+                              with open('/tmp/sales_data.zip', 'wb') as out_file:
+                                  out_file.write(response.read())
+                      except urllib.error.HTTPError as e:
+                          print(f"HTTP Error: {e.code} - {e.reason}")
+                          print(f"Error response headers: {e.headers}")
+                          raise
+                      except urllib.error.URLError as e:
+                          print(f"URL Error: {e.reason}")
+                          raise
+                      except Exception as e:
+                          print(f"Unexpected error during download: {str(e)}")
+                          raise
+
+                      try:
+                          # Extract and process the CSV
+                          with zipfile.ZipFile('/tmp/sales_data.zip', 'r') as zip_ref:
+                              file_list = zip_ref.namelist()
+                              print(f"Files in zip: {file_list}")  # Debug info
+                              csv_filename = next((f for f in file_list if f.endswith('.csv')), None)
+                              if not csv_filename:
+                                  raise ValueError("No CSV file found in the zip archive")
+                              zip_ref.extract(csv_filename, '/tmp/')
+                              
+                              # Upload to S3
+                              print(f"Uploading {csv_filename} to S3")
+                              s3.upload_file(f'/tmp/{csv_filename}', bucket, prefix + 'sales_records.csv')
+                      except Exception as e:
+                          print(f"Error processing zip file: {str(e)}")
+                          raise
+
+                      responseData = {'Message': 'Sales dataset downloaded and uploaded to S3'}
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+                  elif event['RequestType'] == 'Delete':
+                      responseData = {'Message': 'Custom resource deleted'}
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              except Exception as e:
+                  print(f'Error in lambda_handler: {str(e)}')
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {
+                      "Error": str(e)
+                  })
+
+      Runtime: python3.8
+      Timeout: 300
+      Environment:
+        Variables:
+          SalesDataS3Bucket: !Ref SalesDataS3Bucket
+      MemorySize: 512
+
+  DownloadSalesDataCustomResource:
+    Type: Custom::DownloadSalesData
+    Properties:
+      ServiceToken: !GetAtt DownloadSalesDataLambdaFunction.Arn
+
+  SalesRecordsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: sales
+      TableInput:
+        Name: sales_records
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          "skip.header.line.count": "1"
+          "classification": "csv"
+          "delimiter": ","
+        StorageDescriptor:
+          Columns:
+            - Name: region
+              Type: string
+            - Name: country
+              Type: string
+            - Name: item_type
+              Type: string
+            - Name: sales_channel
+              Type: string
+            - Name: order_priority
+              Type: string
+            - Name: order_date
+              Type: string
+            - Name: order_id
+              Type: string
+            - Name: ship_date
+              Type: string
+            - Name: units_sold
+              Type: int
+            - Name: unit_price
+              Type: double
+            - Name: unit_cost
+              Type: double
+            - Name: total_revenue
+              Type: double
+            - Name: total_cost
+              Type: double
+            - Name: total_profit
+              Type: double
+          Location: !Sub "s3://${SalesDataS3Bucket}/sales-data/"
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+            Parameters:
+              field.delim: ","
+              serialization.format: ","
+
+  AthenaQueryPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - athena:StartQueryExecution
+              - athena:GetQueryExecution
+              - athena:GetQueryResults
+              - athena:StopQueryExecution
+              - athena:ListQueryExecutions
+              - athena:BatchGetQueryExecution
+              - athena:GetWorkGroup
+              - athena:ListWorkGroups
+              - athena:ListDatabases
+              - athena:ListTableMetadata
+              - athena:GetTableMetadata
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - glue:GetDatabases
+              - glue:GetTables
+              - glue:GetTable
+              - glue:GetPartitions
+              - glue:GetDatabase
+              - glue:CreateTable
+              - glue:UpdateTable
+              - glue:DeleteTable
+              - glue:BatchDeleteTable
+            Resource:
+              - !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog'
+              - !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/*'
+              - !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/*'
+          - Effect: Allow
+            Action:
+              - s3:GetBucketLocation
+              - s3:GetObject
+              - s3:ListBucket
+              - s3:ListBucketMultipartUploads
+              - s3:ListMultipartUploadParts
+              - s3:AbortMultipartUpload
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource:
+              - !Sub 'arn:aws:s3:::${SalesDataS3Bucket}'
+              - !Sub 'arn:aws:s3:::${SalesDataS3Bucket}/*'
+              - !Sub 'arn:aws:s3:::aws-athena-query-results-${AWS::AccountId}-${AWS::Region}'
+              - !Sub 'arn:aws:s3:::aws-athena-query-results-${AWS::AccountId}-${AWS::Region}/*'
+
+  QueryAthenaLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Ref AthenaQueryPolicy
+
+  PopulateParquetTablesLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt QueryAthenaLambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import time
+          import cfnresponse
+          import logging
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+              logger.info(f"Received event: {event}")
+              
+              try:
+                  if event['RequestType'] == 'Delete':
+                      handle_delete(event, context)
+                  elif event['RequestType'] in ['Create', 'Update']:
+                      handle_create_update(event, context)
+                  else:
+                      raise ValueError(f"Unsupported request type: {event['RequestType']}")
+              except Exception as e:
+                  logger.error(f"Error: {str(e)}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+
+          def handle_delete(event, context):
+              logger.info("Handling DELETE event")
+              
+              athena_client = boto3.client('athena')
+              s3_client = boto3.client('s3')
+              s3_bucket = event['ResourceProperties']['OutputBucket']
+              s3_output = f"s3://{s3_bucket}/athena_query_results/"
+
+              try:
+                  query = "DROP TABLE IF EXISTS sales_records_parquet"
+                  run_query(athena_client, query, s3_output)
+                  logger.info("Parquet table dropped successfully")
+
+                  # Empty S3 bucket
+                  empty_s3_bucket(s3_client, s3_bucket)
+                  logger.info(f"S3 bucket {s3_bucket} emptied successfully")
+              except Exception as e:
+                  logger.warning(f"Error during cleanup: {str(e)}")
+              
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+
+          def empty_s3_bucket(s3_client, bucket_name):
+              paginator = s3_client.get_paginator('list_objects_v2')
+              delete_us = dict(Objects=[])
+              for page in paginator.paginate(Bucket=bucket_name):
+                  for obj in page.get('Contents', []):
+                      delete_us['Objects'].append(dict(Key=obj['Key']))
+                      if len(delete_us['Objects']) >= 1000:
+                          s3_client.delete_objects(Bucket=bucket_name, Delete=delete_us)
+                          delete_us = dict(Objects=[])
+              
+              if len(delete_us['Objects']):
+                  s3_client.delete_objects(Bucket=bucket_name, Delete=delete_us)
+
+          def handle_create_update(event, context):
+              athena_client = boto3.client('athena')
+              s3_bucket = event['ResourceProperties']['OutputBucket']
+              s3_output = f"s3://{s3_bucket}/athena_query_results/"
+
+              try:
+                  # Check if database exists
+                  databases = athena_client.list_databases(CatalogName='AwsDataCatalog')
+                  if 'sales' not in [db['Name'] for db in databases['DatabaseList']]:
+                      raise Exception("Database 'sales' does not exist")
+
+                  # Check if source table exists and has data
+                  logger.info("Checking sales_records table")
+                  result = run_query(athena_client, "SELECT COUNT(*) FROM sales_records", s3_output)
+                  count = int(result['ResultSet']['Rows'][1]['Data'][0]['VarCharValue'])
+                  if count == 0:
+                      raise Exception("Table sales_records is empty")
+                  logger.info(f"Table sales_records has {count} rows")
+
+                  # Create Parquet table
+                  query = f"""
+                  CREATE TABLE IF NOT EXISTS sales_records_parquet
+                  WITH (
+                      format = 'PARQUET',
+                      external_location = 's3://{s3_bucket}/athena/sales_records_parquet/'
+                  )
+                  AS SELECT * FROM sales_records
+                  """
+                  
+                  logger.info(f"Starting query: {query}")
+                  run_query(athena_client, query, s3_output)
+                  
+                  logger.info("Query completed successfully")
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  logger.error(f"Error: {str(e)}")
+                  raise
+
+          def run_query(athena_client, query, s3_output):
+              try:
+                  response = athena_client.start_query_execution(
+                      QueryString=query,
+                      QueryExecutionContext={'Database': 'sales'},
+                      ResultConfiguration={'OutputLocation': s3_output}
+                  )
+                  query_execution_id = response['QueryExecutionId']
+                  
+                  while True:
+                      query_status = athena_client.get_query_execution(QueryExecutionId=query_execution_id)
+                      state = query_status['QueryExecution']['Status']['State']
+                      if state in ['SUCCEEDED', 'FAILED', 'CANCELLED']:
+                          if state != 'SUCCEEDED':
+                              error_message = query_status['QueryExecution']['Status'].get('StateChangeReason', 'Unknown error')
+                              raise Exception(f"Query failed. Reason: {error_message}")
+                          return athena_client.get_query_results(QueryExecutionId=query_execution_id)
+                      time.sleep(5)
+              except Exception as e:
+                  logger.error(f"Error running query: {query}")
+                  logger.error(f"Error details: {str(e)}")
+                  raise
+
+      Runtime: python3.8
+      Timeout: 900
+      Environment:
+        Variables:
+          OUTPUT_BUCKET: !Ref SalesDataS3Bucket
+
+  PopulateParquetTablesCustomResource:
+    Type: Custom::PopulateParquetTables
+    DependsOn:
+      - DownloadSalesDataCustomResource
+      - SalesRecordsTable
+    Properties:
+      ServiceToken: !GetAtt PopulateParquetTablesLambdaFunction.Arn
+      OutputBucket: !Ref SalesDataS3Bucket
+
+  QueryAthenaLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt QueryAthenaLambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import os
+          import boto3
+          import time
+          import json
+
+          athena_client = boto3.client('athena')
+          s3_client = boto3.client('s3')
+
+          def lambda_handler(event, context):
+              try:
+                  if isinstance(event.get('body'), str):
+                      body = json.loads(event.get('body'))
+                  else:
+                      body = event.get('body')
+
+                  if not body:
+                      raise ValueError("The body of the event is None or empty.")
+
+                  query = body['query']
+                  database = body['database']
+              except KeyError as e:
+                  return {
+                      'statusCode': 400,
+                      'body': json.dumps(f'The JSON body must contain the key: {str(e)}')
+                  }
+              except ValueError as e:
+                  return {
+                      'statusCode': 400,
+                      'body': json.dumps(f'An error occurred: {str(e)}')
+                  }
+              except Exception as e:
+                  return {
+                      'statusCode': 400,
+                      'body': json.dumps(f'An unexpected error occurred: {str(e)}')
+                  }
+
+              s3_output = f"s3://{os.environ['S3_OUTPUT_BUCKET']}/"
+
+              try:
+                  response = athena_client.start_query_execution(
+                      QueryString=query,
+                      QueryExecutionContext={
+                          'Database': database
+                      },
+                      ResultConfiguration={
+                          'OutputLocation': s3_output
+                      }
+                  )
+                  query_execution_id = response['QueryExecutionId']
+              except Exception as e:
+                  return {
+                      'statusCode': 400,
+                      'body': json.dumps(f'Failed to start query execution: {str(e)}')
+                  }
+
+              def is_query_still_running(exec_id):
+                  resp = athena_client.get_query_execution(QueryExecutionId=exec_id)
+                  state = resp['QueryExecution']['Status']['State']
+                  return state in ['QUEUED', 'RUNNING']
+
+              while is_query_still_running(query_execution_id):
+                  print('Query is still running...')
+                  time.sleep(5)
+
+              try:
+                  final_response = athena_client.get_query_execution(QueryExecutionId=query_execution_id)
+                  if final_response['QueryExecution']['Status']['State'] == 'SUCCEEDED':
+                      output_location = final_response['QueryExecution']['ResultConfiguration']['OutputLocation']
+                      output_bucket, output_key = parse_s3_url(output_location)
+                      result = s3_client.get_object(Bucket=output_bucket, Key=output_key)
+                      result_content = result['Body'].read().decode('utf-8')
+                      return {
+                          'statusCode': 200,
+                          'body': json.dumps({
+                              'message': 'Query execution succeeded.',
+                              'data': result_content
+                          })
+                      }
+                  elif final_response['QueryExecution']['Status']['State'] == 'FAILED':
+                      return {
+                          'statusCode': 400,
+                          'body': json.dumps('Query execution failed, check Athena history for the query failure reason.')
+                      }
+                  else:
+                      return {
+                          'statusCode': 400,
+                          'body': json.dumps('Query execution cancelled.')
+                      }
+              except Exception as e:
+                  return {
+                      'statusCode': 400,
+                      'body': json.dumps(f'Failed to get query execution status: {str(e)}')
+                  }
+
+          def parse_s3_url(url):
+              if url.startswith('s3://'):
+                  url = url[5:]
+                  bucket, key = url.split('/', 1)
+                  return bucket, key
+              raise ValueError("Invalid S3 URL")
+
+      Runtime: python3.8
+      Timeout: 30
+      Environment:
+        Variables:
+          S3_OUTPUT_BUCKET: !Ref SalesDataS3Bucket
+      ReservedConcurrentExecutions: 5
+
+
+  TextToSqlEngineAPIGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: text-to-sql-engine-APIGateway
+
+  QueryAthenaResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt TextToSqlEngineAPIGateway.RootResourceId
+      PathPart: query
+      RestApiId: !Ref TextToSqlEngineAPIGateway
+
+  QueryAthenaMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: POST
+      ResourceId: !Ref QueryAthenaResource
+      RestApiId: !Ref TextToSqlEngineAPIGateway
+      AuthorizationType: NONE
+      ApiKeyRequired: true
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${QueryAthenaLambdaFunction.Arn}/invocations"
+      MethodResponses:
+        - StatusCode: 200
+
+  QueryAthenaLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref QueryAthenaLambdaFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TextToSqlEngineAPIGateway}/*"
+
+  TextToSqlEngineAPIGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - QueryAthenaMethod
+    Properties:
+      RestApiId: !Ref TextToSqlEngineAPIGateway
+
+  ApiGatewayAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: "/aws/apigateway/TextToSqlEngineAPIGateway/access-logs"
+      RetentionInDays: 14
+
+  TextToSqlEngineAPIGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: Prod
+      RestApiId: !Ref TextToSqlEngineAPIGateway
+      DeploymentId: !Ref TextToSqlEngineAPIGatewayDeployment
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayAccessLogGroup.Arn
+        Format: '{ "requestId": "$context.requestId", "ip": "$context.identity.sourceIp", "caller": "$context.identity.caller", "user": "$context.identity.user", "requestTime": "$context.requestTime", "httpMethod": "$context.httpMethod", "resourcePath": "$context.resourcePath", "status": "$context.status", "protocol": "$context.protocol", "responseLength": "$context.responseLength" }'
+  
+  TextToSqlEngineAPIGatewayUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: UnifiedUsagePlan
+      ApiStages:
+        - ApiId: !Ref TextToSqlEngineAPIGateway
+          Stage: !Ref TextToSqlEngineAPIGatewayStage
+
+  TextToSqlEngineAPIGatewayApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - TextToSqlEngineAPIGatewayUsagePlan
+    Properties:
+      Enabled: true
+
+  TextToSqlEngineAPIGatewayUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref TextToSqlEngineAPIGatewayApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref TextToSqlEngineAPIGatewayUsagePlan
+
+Outputs:
+  SalesDataS3Bucket:
+    Description: "S3 bucket for storing Sales datasets"
+    Value: !Ref SalesDataS3Bucket
+
+  TextToSqlEngineAPIGatewayURL:
+    Description: "URL of the Unified API Gateway endpoint"
+    Value: !Sub "https://${TextToSqlEngineAPIGateway}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+
+  TextToSqlEngineAPIGatewayApiKey:
+    Description: "API Key for the Unified API Gateway"
+    Value: !Ref TextToSqlEngineAPIGatewayApiKey

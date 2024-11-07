@@ -1,0 +1,273 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Sales Data Query API",
+    "version": "1.0.0",
+    "description": "API for querying sales data through Athena and accessing schema instructions"
+  },
+  "servers": [
+    {
+      "url": "https://{api-id}.execute-api.{region}.amazonaws.com/Prod",
+      "description": "API Gateway endpoint",
+      "variables": {
+        "api-id": {
+          "description": "API Gateway ID",
+          "default": "your-api-id"
+        },
+        "region": {
+          "description": "AWS Region",
+          "default": "us-east-1"
+        }
+      }
+    }
+  ],
+  "paths": {
+    "/query": {
+      "post": {
+        "summary": "Execute a query on the sales database",
+        "description": "Execute SQL queries against the sales data through Amazon Athena",
+        "operationId": "executeSalesQuery",
+        "tags": [
+          "query"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "description": "Query and database information",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "example": "SELECT region, SUM(total_revenue) as total_sales FROM sales_records GROUP BY region ORDER BY total_sales DESC"
+                  },
+                  "database": {
+                    "type": "string",
+                    "example": "sales",
+                    "description": "The Athena database name"
+                  }
+                },
+                "required": [
+                  "query",
+                  "database"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Query executed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Query execution succeeded."
+                    },
+                    "data": {
+                      "type": "string",
+                      "description": "CSV-formatted query results"
+                    }
+                  }
+                },
+                "example": {
+                  "message": "Query execution succeeded.",
+                  "data": "region,total_sales\nNorth America,1250000.50\nEurope,980000.25"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/access": {
+      "get": {
+        "summary": "Get schema instructions",
+        "description": "Retrieve the schema instructions file from S3",
+        "operationId": "getSchemaInstructions",
+        "tags": [
+          "schema"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schema instructions retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "File read successful."
+                    },
+                    "content": {
+                      "type": "string",
+                      "description": "Content of the schema instructions file"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "example": 400
+          },
+          "body": {
+            "type": "string",
+            "example": "An error occurred: Invalid query syntax"
+          }
+        }
+      },
+      "SalesRecord": {
+        "type": "object",
+        "properties": {
+          "region": {
+            "type": "string",
+            "description": "Geographic region of the sale"
+          },
+          "country": {
+            "type": "string",
+            "description": "Country where the sale occurred"
+          },
+          "item_type": {
+            "type": "string",
+            "description": "Category/type of the item sold"
+          },
+          "sales_channel": {
+            "type": "string",
+            "description": "Sales channel (Online/Offline)"
+          },
+          "order_priority": {
+            "type": "string",
+            "description": "Priority level of the order (H/M/L/C)"
+          },
+          "order_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Date when the order was placed"
+          },
+          "order_id": {
+            "type": "string",
+            "description": "Unique identifier for each order"
+          },
+          "ship_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Date when the order was shipped"
+          },
+          "units_sold": {
+            "type": "integer",
+            "description": "Number of units sold"
+          },
+          "unit_price": {
+            "type": "number",
+            "format": "double",
+            "description": "Price per unit"
+          },
+          "unit_cost": {
+            "type": "number",
+            "format": "double",
+            "description": "Cost per unit"
+          },
+          "total_revenue": {
+            "type": "number",
+            "format": "double",
+            "description": "Total revenue from the order"
+          },
+          "total_cost": {
+            "type": "number",
+            "format": "double",
+            "description": "Total cost of the order"
+          },
+          "total_profit": {
+            "type": "number",
+            "format": "double",
+            "description": "Total profit from the order"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "name": "x-api-key",
+        "in": "header"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "query",
+      "description": "Sales data query operations"
+    },
+    {
+      "name": "schema",
+      "description": "Schema instruction operations"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for API Gateway CloudWatch Logging Role and Configuration'
+
+Resources:
+  APIGatewayCloudWatchRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: '/'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs'
+
+  APIGatewayAccountConfig:
+    Type: 'AWS::ApiGateway::Account'
+    Properties:
+      CloudWatchRoleArn: !GetAtt APIGatewayCloudWatchRole.Arn
+
+Outputs:
+  APIGatewayCloudWatchRoleArn:
+    Description: "ARN of the IAM role for API Gateway CloudWatch logging"
+    Value: !GetAtt APIGatewayCloudWatchRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-APIGatewayCloudWatchRoleArn"
