@@ -1,0 +1,11 @@
+1) The file survey-responses.txt contains responses from customer surveys about the online vs. offline (brick & mortar) shopping experience.
+We used the following prompt to generate the dataset, repeated over both sales channels (online/offline):
+"Generate customer survey responses about their shopping experience at a retail company. Generate 20 responses for the {{sales_channel}} shopping experience of the customer. Reviews should be trending positive for the experience, however some reviews should be mixed or negative. Include the rating, country of reviewer, and Sales Channel purchased in review."
+
+2) The file product-reviews.txt contains responses from customer reviews about the various products that we sell.
+We used the following prompt to generate the dataset, repeated over the 12 item types represented in the dataset:
+"Generate 10 customer product reviews about Item Type {{item_type}} at a retail company. The reviews should be generally {{sentiment}}. The reviews should touch on common customer themes, but be creative with results. Include the rating, country of reviewer, and Item Type purchased in review."
+
+3) The file world-news.txt contains sample world news events that may affect the sales of some of our products.
+We used the following prompt to generate the dataset, repeated over the 12 item types represented in the dataset:
+"Generate 10 summarized news blurbs of fictitious global events that may affect the sale of Item Type {{item_type}} for a retail company. Mention specific regions, countries, and dates in which these events occurred. Dates should be within 2010 to 2017 inclusive. Be professional, and do not discuss politically contentious topics."
