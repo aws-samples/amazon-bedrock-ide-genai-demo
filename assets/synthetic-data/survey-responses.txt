@@ -1,0 +1,161 @@
+1. Rating: 2/5
+Country: USA
+Channel: Website
+"The website kept freezing during checkout. Had to restart the process three times before my order went through. Product selection was good, but the technical issues were frustrating."
+
+2. Rating: 1/5
+Country: Canada
+Channel: Mobile App
+"Terrible app experience. Product recommendations were completely irrelevant to my interests. Wasted 30 minutes browsing through items I'd never buy."
+
+3. Rating: 4/5
+Country: UK
+Channel: Website
+"Generally good experience. Found what I needed quickly, though the search filters could use some work. Fast delivery."
+
+4. Rating: 2/5
+Country: Australia
+Channel: Mobile App
+"App crashes constantly. Customer service was helpful when I finally reached them, but the technical issues make shopping nearly impossible."
+
+5. Rating: 1/5
+Country: USA
+Channel: Website
+"Pages take forever to load. Product images wouldn't display properly. Ended up buying from a competitor instead."
+
+6. Rating: 3/5
+Country: Germany
+Channel: Mobile App
+"Mixed experience. Good prices and selection, but the app is slow and clunky. Needs optimization."
+
+7. Rating: 1/5
+Country: Canada
+Channel: Website
+"Site search is broken. Typing 'blue shirt' gives me results for everything BUT blue shirts. Very poor user experience."
+
+8. Rating: 5/5
+Country: UK
+Channel: Mobile App
+"Smooth experience from browsing to checkout. No issues at all. Will shop again!"
+
+9. Rating: 2/5
+Country: USA
+Channel: Website
+"Cart items kept disappearing. Support couldn't help. Finally completed purchase after multiple attempts."
+
+10. Rating: 1/5
+Country: France
+Channel: Mobile App
+"App is practically unusable. Constant crashes, slow loading times, and confusing navigation."
+
+11. Rating: 4/5
+Country: Spain
+Channel: Website
+"Decent experience overall. Some minor loading issues but nothing major. Good prices."
+
+12. Rating: 2/5
+Country: Italy
+Channel: Mobile App
+"Poor user interface. Too many pop-ups and notifications. Makes shopping frustrating."
+
+13. Rating: 1/5
+Country: USA
+Channel: Website
+"Size guide doesn't work properly. Product descriptions are vague. Checkout process is unnecessarily complicated."
+
+14. Rating: 3/5
+Country: Mexico
+Channel: Mobile App
+"App works okay but needs improvement. Sometimes struggles with payment processing."
+
+15. Rating: 1/5
+Country: Brazil
+Channel: Website
+"Site kept timing out during peak hours. Couldn't complete purchase despite multiple attempts."
+
+16. Rating: 2/5
+Country: India
+Channel: Mobile App
+"App is very slow on 4G. Images take forever to load. Need better optimization."
+
+17. Rating: 5/5
+Country: Canada
+Channel: Website
+"Everything worked perfectly. Easy to navigate, quick checkout, no issues."
+
+18. Rating: 1/5
+Country: Australia
+Channel: Mobile App
+"Recommendations are completely off. Shows me winter coats when I'm shopping for summer wear."
+
+19. Rating: 2/5
+Country: UK
+Channel: Website
+"Search function needs work. Filters don't actually filter properly. Frustrating experience."
+
+20. Rating: 1/5
+Country: USA
+Channel: Mobile App
+"App keeps logging me out repeatedly. Had to enter payment info multiple times. Waste of time."
+
+-----
+
+1. Rating: 5/5 | USA | In-Store
+"Excellent service at the downtown location. Sarah at customer service went above and beyond to help me find the perfect size. Store was clean and well-organized."
+
+2. Rating: 4/5 | Canada | In-Store
+"Good experience overall. Liked the product selection but had to wait a bit long at checkout. Store staff were knowledgeable and helpful."
+
+3. Rating: 2/5 | USA | In-Store
+"Store was understaffed during peak hours. Waited 25 minutes to check out. Products were good but the experience was frustrating."
+
+4. Rating: 5/5 | UK | In-Store
+"Brilliant shopping experience! The store layout is intuitive, and the staff were incredibly friendly. Will definitely return."
+
+5. Rating: 4/5 | Australia | In-Store
+"Nice shopping environment and good product range. Would've given 5 stars but some items were out of stock."
+
+6. Rating: 1/5 | USA | In-Store
+"Terrible experience. Staff was rude and unhelpful. Store was messy and disorganized. Won't be returning."
+
+7. Rating: 5/5 | Canada | In-Store
+"Amazing experience! The store manager personally helped me find exactly what I needed. Clean store and great atmosphere."
+
+8. Rating: 3/5 | UK | In-Store
+"Average experience. Nothing particularly wrong, but nothing outstanding either. Prices were reasonable."
+
+9. Rating: 5/5 | USA | In-Store
+"Love shopping here! The new store layout is fantastic and the staff is always ready to help. Great selection of products."
+
+10. Rating: 4/5 | Australia | In-Store
+"Very pleasant shopping experience. Store was well-maintained and staff were professional. Slightly expensive though."
+
+11. Rating: 5/5 | USA | In-Store
+"Best retail experience in months! The fitting rooms were clean, and the staff was attentive without being pushy."
+
+12. Rating: 2/5 | Canada | In-Store
+"Store needs better inventory management. Drove 30 minutes to buy an advertised item that was out of stock."
+
+13. Rating: 5/5 | UK | In-Store
+"Outstanding customer service! The staff helped me find alternatives when my first choice wasn't available."
+
+14. Rating: 4/5 | USA | In-Store
+"Good shopping experience. Store was clean and well-organized. Would appreciate more checkout counters during busy times."
+
+15. Rating: 5/5 | Australia | In-Store
+"Fantastic experience from start to finish. Staff was knowledgeable and friendly. Store layout was perfect."
+
+16. Rating: 3/5 | USA | In-Store
+"Decent experience but the store could use better lighting. Product selection was good but some areas were difficult to navigate."
+
+17. Rating: 5/5 | Canada | In-Store
+"Exceptional service! The store had a great atmosphere and the staff was incredibly helpful. Will definitely return."
+
+18. Rating: 4/5 | UK | In-Store
+"Very good experience. Store was clean and well-stocked. Staff was friendly though seemed a bit rushed."
+
+19. Rating: 1/5 | USA | In-Store
+"Disappointing visit. Security staff was overly aggressive and made shopping uncomfortable. Products were overpriced."
+
+20. Rating: 5/5 | Australia | In-Store
+"Perfect shopping experience! The store layout was intuitive, staff was helpful, and checkout was quick. Couldn't ask for more."
