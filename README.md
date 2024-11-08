@@ -74,25 +74,43 @@ Throughout the process, Bedrock Studio maintains the conversation history and se
 
 ### Console Deployment
 
-1. Download the GitHub repository (includes OpenAPI schemas, text files, and example pages)
+Download the GitHub repository (includes OpenAPI schemas, text files, and example pages)
 
-2. (Conditional) Deploy API Gateway Logging Stack
-   - Required if you don't have an API Gateway CloudWatch logging role
-   - Click "Launch Stack" in console
-   - Name the stack (e.g., "api-gateway-logging-stack")
-   - Review and acknowledge IAM resource creation
-   - Create stack and note the APIGatewayCloudWatchRoleArn output
+#### Step 1: API Gateway Logging Setup (Conditional)
+If you don't have an API Gateway CloudWatch logging role in your account:
 
-3. Deploy Main Stack
-   - Click "Launch Stack" in console
-   - Select desired AWS region
-   - Review stack details
-   - Acknowledge IAM resource creation
-   - Create stack
-   - Note the outputs:
-     - SalesDataS3Bucket
-     - TextToSqlEngineAPIGatewayURL
-     - TextToSqlEngineAPIGatewayApiKey
+1. Navigate to the AWS CloudFormation console
+2. Click "Create stack" at the top right
+3. Select "Upload a template file"
+4. Upload the `cloudformation_deployAPIGW_logging_IAM_Role` template file
+5. Click "Next"
+6. Enter a stack name (e.g., "api-gateway-logging-stack")
+7. Review the configuration and acknowledge IAM resource creation
+8. Click "Create stack"
+9. Wait for stack creation to complete
+10. Note the `APIGatewayCloudWatchRoleArn` from the Outputs tab
+
+#### Step 2: Main Stack Deployment
+1. Download all files from the GitHub repository
+2. Navigate to the AWS CloudFormation console
+3. Click "Create stack" at the top right
+4. Select "Upload a template file"
+5. Upload the `cloudformation_with_SalesData.yaml` template file
+6. Click "Next"
+7. Enter a stack name (e.g., "text-to-sql-engine")
+8. Review the stack details (no custom parameters required)
+9. Click "Next"
+10. Review the configuration and acknowledge IAM resource creation
+11. Click "Create stack"
+12. Wait for stack creation to complete (this may take several minutes)
+
+#### Step 3: Retrieve Important Information
+After stack creation, go to the Outputs tab to find:
+- `SalesDataS3Bucket`: S3 bucket storing datasets and query results
+- `TextToSqlEngineAPIGatewayURL`: API Gateway endpoint URL
+- `TextToSqlEngineAPIGatewayApiKey`: API Key for authentication
+
+Note: The Sales data will be automatically downloaded and stored in the S3 bucket during stack creation.
 
 ### CLI Deployment
 
