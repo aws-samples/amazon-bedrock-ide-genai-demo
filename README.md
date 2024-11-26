@@ -1,10 +1,10 @@
-# Natural Language Query Engine with Amazon Bedrock Studio
+# Build generative AI applications in a few clicks with Amazon Bedrock IDE in Amazon SageMaker Unified Studio
 
-This repository provides supplemental artifacts for our blog post "Building a Natural Language Query Engine with Amazon Bedrock Studio." It includes structured sales data, unstructured product data and customer reviews, OpenAPI schemas, CloudFormation templates, and LLM prompts.
+This repository provides supplemental artifacts for our blog post "Build generative AI applications in a few clicks with Amazon Bedrock IDE in Amazon SageMaker Unified Studio." It includes structured sales data, unstructured product data and customer reviews, OpenAPI schemas, CloudFormation templates, and LLM prompts.
 
 ## Description
 
-In our blog post, we explore how Bedrock Studio simplifies the process of building generative AI applications. We guide you through:
+In our blog post, we explore how Bedrock IDE simplifies the process of building generative AI applications. We guide you through:
 - Setting up your development environment
 - Leveraging pre-built models and templates
 - Integrating APIs and knowledge bases
@@ -40,9 +40,9 @@ The CloudFormation template creates:
 Agents for Amazon Bedrock enable builders to execute multistep tasks in generative AI applications. In this architecture, Agents for Amazon Bedrock initiate the process by sequentially reasoning through the user's query. They break down the query into smaller components and understand the context behind each component. Through contextual understanding, the agents maintain a coherent Chain-of-Thought (CoT), ensuring that each part of the query contributes logically to the overall intent. The following steps show how Bedrock Agents use chaining of thoughts to execute the task of converting natural language to SQL queries:
 ### 1.	Prompt 
 - The user initiates the process by providing a natural language prompt, such as "What were the key insights from the positive and negative product reviews for our high-revenue cosmetics line in Asia?" 
-- The prompt is sent to Amazon Bedrock Studio, which serves as the interface for interacting with the generative AI application.
+- The prompt is sent to Amazon Bedrock IDE, which serves as the interface for interacting with the generative AI application.
 ### 2.	Agents for Amazon Bedrock: 
-Bedrock Studio forwards the input to an Amazon Bedrock Agent. The agent uses prompts, conversation history, action groups, knowledge bases, and specific instructions to interpret and process the input.
+Bedrock IDE forwards the input to an Amazon Bedrock Agent. The agent uses prompts, conversation history, action groups, knowledge bases, and specific instructions to interpret and process the input.
 ### 3.	Chain-of-Thought (CoT) Reasoning
 - The agents use Chain-of-Thought reasoning to break down a complex user query inter simpler, logical parts.
 - The agents then determine a course of action for how they will find the necessary information to respond to the user query (ex. Search the knowledge base or query the database).
@@ -58,9 +58,9 @@ Bedrock Studio forwards the input to an Amazon Bedrock Agent. The agent uses pro
     - Amazon OpenSearch Service facilitates searching through the knowledge base. 
 ### 5.	Response
 - The agent compiles the results from both structured and unstructured data sources.
-- The processed and formatted response is sent back to the user through Bedrock Studio.
+- The processed and formatted response is sent back to the user through Bedrock IDE.
 ### 6.	Session Store: 
-Throughout the process, Bedrock Studio maintains the conversation history and session state to handle follow-up questions and maintain context.
+Throughout the process, Bedrock IDE maintains the conversation history and session state to handle follow-up questions and maintain context.
 
 
 ## Requirements
