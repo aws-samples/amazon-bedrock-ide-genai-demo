@@ -200,11 +200,14 @@ Resources:
               - athena:StopQueryExecution
               - athena:ListQueryExecutions
               - athena:BatchGetQueryExecution
+              - athena:ListDatabases
+            Resource: !Sub 'arn:aws:athena:${AWS::Region}:${AWS::AccountId}:workgroup/primary'
+          - Effect: Allow
+            Action:
               - athena:GetWorkGroup
               - athena:ListWorkGroups
               - athena:ListDatabases
-              - athena:ListTableMetadata
-              - athena:GetTableMetadata
+              - athena:GetDatabase
             Resource: '*'
           - Effect: Allow
             Action:
@@ -407,13 +410,24 @@ Resources:
 
           def lambda_handler(event, context):
               try:
+                  auth_context = event.get('requestContext', {}).get('authorizer', {})
+                  allowed_operations = auth_context.get('allowedOperations', '')
+                  
+                  if 'query' != allowed_operations:  # Changed from list check to string comparison
+                      return {
+                          'statusCode': 403,
+                          'body': json.dumps('Operation not allowed')
+                      }
                   if isinstance(event.get('body'), str):
                       body = json.loads(event.get('body'))
                   else:
                       body = event.get('body')
 
                   if not body:
-                      raise ValueError("The body of the event is None or empty.")
+                      return {
+                          'statusCode': 400,
+                          'body': json.dumps('Missing request body')
+                      }
 
                   query = body['query']
                   database = body['database']
@@ -497,14 +511,197 @@ Resources:
                   bucket, key = url.split('/', 1)
                   return bucket, key
               raise ValueError("Invalid S3 URL")
-
       Runtime: python3.8
       Timeout: 30
       Environment:
         Variables:
           S3_OUTPUT_BUCKET: !Ref SalesDataS3Bucket
       ReservedConcurrentExecutions: 5
+  
+  ApiKeysSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}-api-keys"
+      GenerateSecretString:
+        SecretStringTemplate: '{"clientId": "default", "allowedOperations": ["query"]}'
+        GenerateStringKey: "apiKey"
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\!$%^&*()_+<>?:{}|~`,.;[]'
+  
+  CustomAuthorizerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref ApiKeysSecret
 
+  CustomAuthorizerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt CustomAuthorizerRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          import re
+
+          class HttpVerb:
+            GET = "GET"
+            POST = "POST"
+            PUT = "PUT"
+            PATCH = "PATCH"
+            HEAD = "HEAD" 
+            DELETE = "DELETE"
+            OPTIONS = "OPTIONS"
+            ALL = "*"
+
+          class AuthPolicy:
+            awsAccountId = ""
+            principalId = ""
+            version = "2012-10-17"
+            pathRegex = "^[/.a-zA-Z0-9-\*]+$"
+            allowMethods = []
+            denyMethods = []
+            restApiId = "<<restApiId>>"
+            region = "<<region>>"
+            stage = "<<stage>>"
+
+            def __init__(self, principal, awsAccountId):
+                self.awsAccountId = awsAccountId
+                self.principalId = principal
+                self.allowMethods = []
+                self.denyMethods = []
+
+            def _addMethod(self, effect, verb, resource, conditions):
+                if verb != "*" and not hasattr(HttpVerb, verb):
+                    raise NameError("Invalid HTTP verb " + verb)
+                resourcePattern = re.compile(self.pathRegex)
+                if not resourcePattern.match(resource):
+                    raise NameError("Invalid resource path: " + resource)
+
+                if resource[:1] == "/":
+                    resource = resource[1:]
+
+                resourceArn = (f"arn:aws:execute-api:{self.region}:{self.awsAccountId}:"
+                              f"{self.restApiId}/{self.stage}/{verb}/{resource}")
+
+                if effect.lower() == "allow":
+                    self.allowMethods.append({
+                        'resourceArn': resourceArn,
+                        'conditions': conditions
+                    })
+                elif effect.lower() == "deny":
+                    self.denyMethods.append({
+                        'resourceArn': resourceArn,
+                        'conditions': conditions 
+                    })
+
+            def _getEmptyStatement(self, effect):
+                statement = {
+                    'Action': 'execute-api:Invoke',
+                    'Effect': effect[:1].upper() + effect[1:].lower(),
+                    'Resource': []
+                }
+                return statement
+
+            def _getStatementForEffect(self, effect, methods):
+                statements = []
+                if len(methods) > 0:
+                    statement = self._getEmptyStatement(effect)
+                    for curMethod in methods:
+                        if curMethod['conditions'] is None or len(curMethod['conditions']) == 0:
+                            statement['Resource'].append(curMethod['resourceArn'])
+                        else:
+                            conditionalStatement = self._getEmptyStatement(effect)
+                            conditionalStatement['Resource'].append(curMethod['resourceArn'])
+                            conditionalStatement['Condition'] = curMethod['conditions']
+                            statements.append(conditionalStatement)
+                    statements.append(statement)
+                return statements
+
+            def allowAllMethods(self):
+                self._addMethod("Allow", HttpVerb.ALL, "*", [])
+
+            def build(self):
+                if ((self.allowMethods is None or len(self.allowMethods) == 0) and
+                    (self.denyMethods is None or len(self.denyMethods) == 0)):
+                    raise NameError("No statements defined for the policy")
+
+                policy = {
+                    'principalId': self.principalId,
+                    'policyDocument': {
+                        'Version': self.version,
+                        'Statement': []
+                    }
+                }
+
+                policy['policyDocument']['Statement'].extend(
+                    self._getStatementForEffect("Allow", self.allowMethods))
+                policy['policyDocument']['Statement'].extend(
+                    self._getStatementForEffect("Deny", self.denyMethods))
+
+                return policy
+
+          def lambda_handler(event, context):
+              try:
+                  print("Received event:", json.dumps(event))  # Debug log
+                  
+                  api_key = event.get('headers', {}).get('x-api-key')
+                  if not api_key:
+                      print("No API key found")
+                      raise Exception('Unauthorized')
+                      
+                  method_arn = event.get('methodArn')
+                  if not method_arn:
+                      print("No methodArn found")
+                      raise Exception('Missing methodArn')
+
+                  print(f"API Key: {api_key}, Method ARN: {method_arn}")  # Debug log
+
+                  tmp = method_arn.split(':')
+                  apiGatewayArnTmp = tmp[5].split('/')
+                  awsAccountId = tmp[4]
+
+                  policy = AuthPolicy('default', awsAccountId)
+                  policy.restApiId = apiGatewayArnTmp[0]
+                  policy.region = tmp[3]
+                  policy.stage = apiGatewayArnTmp[1]
+                  
+                  policy.allowAllMethods()
+                  authResponse = policy.build()
+                  
+                  authResponse['context'] = {
+                      'allowedOperations': 'query'
+                  }
+
+                  print("Response:", json.dumps(authResponse))  # Debug log
+                  return authResponse
+
+              except Exception as e:
+                  print(f"Error: {str(e)}")
+                  raise Exception('Unauthorized')
+      Runtime: python3.8
+      Timeout: 30
+      Environment:
+        Variables:
+          SECRET_NAME: !Sub "${AWS::StackName}-api-keys"
 
   TextToSqlEngineAPIGateway:
     Type: AWS::ApiGateway::RestApi
@@ -524,14 +721,17 @@ Resources:
       HttpMethod: POST
       ResourceId: !Ref QueryAthenaResource
       RestApiId: !Ref TextToSqlEngineAPIGateway
-      AuthorizationType: NONE
-      ApiKeyRequired: true
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref CustomAuthorizer
       Integration:
-        IntegrationHttpMethod: POST
         Type: AWS_PROXY
-        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${QueryAthenaLambdaFunction.Arn}/invocations"
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${QueryAthenaLambdaFunction.Arn}/invocations
       MethodResponses:
         - StatusCode: 200
+        - StatusCode: 400
+        - StatusCode: 401
+        - StatusCode: 403
 
   QueryAthenaLambdaPermission:
     Type: AWS::Lambda::Permission
@@ -539,7 +739,26 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Ref QueryAthenaLambdaFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TextToSqlEngineAPIGateway}/*"
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TextToSqlEngineAPIGateway}/*
+
+  CustomAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: CustomApiKeyAuthorizer
+      RestApiId: !Ref TextToSqlEngineAPIGateway
+      Type: REQUEST
+      IdentitySource: method.request.header.x-api-key
+      AuthorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CustomAuthorizerFunction.Arn}/invocations"
+      AuthorizerResultTtlInSeconds: 300
+
+  CustomAuthorizerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CustomAuthorizerFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TextToSqlEngineAPIGateway}/authorizers/${CustomAuthorizer}"
+
 
   TextToSqlEngineAPIGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
@@ -548,44 +767,13 @@ Resources:
     Properties:
       RestApiId: !Ref TextToSqlEngineAPIGateway
 
-  ApiGatewayAccessLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: "/aws/apigateway/TextToSqlEngineAPIGateway/access-logs"
-      RetentionInDays: 14
-
   TextToSqlEngineAPIGatewayStage:
     Type: AWS::ApiGateway::Stage
     Properties:
       StageName: Prod
       RestApiId: !Ref TextToSqlEngineAPIGateway
       DeploymentId: !Ref TextToSqlEngineAPIGatewayDeployment
-      AccessLogSetting:
-        DestinationArn: !GetAtt ApiGatewayAccessLogGroup.Arn
-        Format: '{ "requestId": "$context.requestId", "ip": "$context.identity.sourceIp", "caller": "$context.identity.caller", "user": "$context.identity.user", "requestTime": "$context.requestTime", "httpMethod": "$context.httpMethod", "resourcePath": "$context.resourcePath", "status": "$context.status", "protocol": "$context.protocol", "responseLength": "$context.responseLength" }'
   
-  TextToSqlEngineAPIGatewayUsagePlan:
-    Type: AWS::ApiGateway::UsagePlan
-    Properties:
-      UsagePlanName: UnifiedUsagePlan
-      ApiStages:
-        - ApiId: !Ref TextToSqlEngineAPIGateway
-          Stage: !Ref TextToSqlEngineAPIGatewayStage
-
-  TextToSqlEngineAPIGatewayApiKey:
-    Type: AWS::ApiGateway::ApiKey
-    DependsOn:
-      - TextToSqlEngineAPIGatewayUsagePlan
-    Properties:
-      Enabled: true
-
-  TextToSqlEngineAPIGatewayUsagePlanKey:
-    Type: AWS::ApiGateway::UsagePlanKey
-    Properties:
-      KeyId: !Ref TextToSqlEngineAPIGatewayApiKey
-      KeyType: API_KEY
-      UsagePlanId: !Ref TextToSqlEngineAPIGatewayUsagePlan
-
 Outputs:
   SalesDataS3Bucket:
     Description: "S3 bucket for storing Sales datasets"
@@ -594,7 +782,7 @@ Outputs:
   TextToSqlEngineAPIGatewayURL:
     Description: "URL of the Unified API Gateway endpoint"
     Value: !Sub "https://${TextToSqlEngineAPIGateway}.execute-api.${AWS::Region}.amazonaws.com/Prod"
-
-  TextToSqlEngineAPIGatewayApiKey:
-    Description: "API Key for the Unified API Gateway"
-    Value: !Ref TextToSqlEngineAPIGatewayApiKey
+  
+  ApiKeySecretArn:
+    Description: "ARN of the Secret storing API keys"
+    Value: !Ref ApiKeysSecret
